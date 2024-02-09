@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <cmath>
 #include <Windows.h>
 
@@ -7,18 +7,6 @@ using namespace std;
 struct Vec2 {
     float x, y;
     Vec2(float _x = 0, float _y = 0) : x(_x), y(_y) {}
-
-    Vec2 operator+(const Vec2& other) const {
-        return { x + other.x, y + other.y };
-    }
-
-    Vec2 operator-(const Vec2& other) const {
-        return { x - other.x, y - other.y };
-    }
-
-    Vec2 operator*(float scalar) const {
-        return { x * scalar, y * scalar };
-    }
 };
 
 struct Game {
@@ -33,7 +21,7 @@ struct Game {
     float fDepth = 16.0f;
     float fSpeed = 5.0f;
 
-    wchar_t map[17][17] = {
+    wchar_t map[16][16] = {
         L"#########.......",
         L"#...............",
         L"#.......########",
@@ -53,6 +41,60 @@ struct Game {
     };
 
     Game() {}
+
+    Vec2 operator+(const Vec2& other) const {
+        return { x + other.x, y + other.y };
+    }
+
+    Vec2 operator*(float scalar) const {
+        return { x * scalar, y * scalar };
+    }
+
+    Vec2 Rotate(float angle) const {
+        return {
+            x * cos(angle) - y * sin(angle),
+            x * sin(angle) + y * cos(angle)
+        };
+    }
+
+    void Render3D() {
+        for (int x = 0; x < nScreenWidth; x++) {
+            float fRayAngle = (fPlayerA - fFOV / 2.0f) + (static_cast<float>(x) / nScreenWidth) * fFOV;
+            Vec2 rayDir = { cosf(fRayAngle), sinf(fRayAngle) };
+
+            for (float fDistanceToWall = 0.0f; fDistanceToWall < fDepth; fDistanceToWall += 0.1f) {
+                Vec2 testPos = playerPos + rayDir * fDistanceToWall;
+                int nTestX = static_cast<int>(testPos.x);
+                int nTestY = static_cast<int>(testPos.y);
+
+                if (nTestX < 0 || nTestX >= nMapWidth || nTestY < 0 || nTestY >= nMapHeight)
+                    break;
+                else if (map[nTestY][nTestX] == '#') {
+                    int nCeiling = static_cast<int>(nScreenHeight / 2.0 - nScreenHeight / fDistanceToWall);
+                    int nFloor = nScreenHeight - nCeiling;
+
+                    wchar_t nShade = (fDistanceToWall <= fDepth / 4.0f) ? 0x2588 :
+                        (fDistanceToWall < fDepth / 3.0f) ? 0x2593 :
+                        (fDistanceToWall < fDepth / 2.0f) ? 0x2592 :
+                        (fDistanceToWall < fDepth) ? 0x2591 : ' ';
+
+                    for (int y = 0; y < nScreenHeight; y++) {
+                        if (y <= nCeiling)
+                            wcout << L' ';
+                        else if (y > nCeiling && y <= nFloor)
+                            wcout << nShade;
+                        else {
+                            float b = 1.0f - ((static_cast<float>(y) - nScreenHeight / 2.0f) / (nScreenHeight / 2.0f));
+                            nShade = (b < 0.25) ? '#' : (b < 0.5) ? 'x' : (b < 0.75) ? '.' : (b < 0.9) ? '-' : ' ';
+                            wcout << nShade;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     void HandleInput(float fElapsedTime) {
         if (GetAsyncKeyState((unsigned short)'A') & 0x8000)
             fPlayerA -= (fSpeed * 0.75f) * fElapsedTime;
@@ -62,61 +104,17 @@ struct Game {
 
         Vec2 moveDir = { sinf(fPlayerA), cosf(fPlayerA) };
         if (GetAsyncKeyState((unsigned short)'W') & 0x8000) {
-            Vec2 newPlayerPos = playerPos + moveDir * fSpeed * fElapsedTime;
-            int nNewPlayerPosX = static_cast<int>(newPlayerPos.x);
-            int nNewPlayerPosY = static_cast<int>(newPlayerPos.y);
-            if (map[nNewPlayerPosY][nNewPlayerPosX] != '#')
-                playerPos = newPlayerPos;
+            playerPos = playerPos + moveDir * fSpeed * fElapsedTime;
+            if (map[static_cast<int>(playerPos.y)][static_cast<int>(playerPos.x)] == '#')
+                playerPos = playerPos - moveDir * fSpeed * fElapsedTime;
         }
 
         if (GetAsyncKeyState((unsigned short)'S') & 0x8000) {
-            Vec2 newPlayerPos = playerPos - moveDir * fSpeed * fElapsedTime;
-            int nNewPlayerPosX = static_cast<int>(newPlayerPos.x);
-            int nNewPlayerPosY = static_cast<int>(newPlayerPos.y);
-            if (map[nNewPlayerPosY][nNewPlayerPosX] != '#')
-                playerPos = newPlayerPos;
+            playerPos = playerPos - moveDir * fSpeed * fElapsedTime;
+            if (map[static_cast<int>(playerPos.y)][static_cast<int>(playerPos.x)] == '#')
+                playerPos = playerPos + moveDir * fSpeed * fElapsedTime;
         }
     }
-
-    void Render3D() {
-        const float fWallScalingFactor = 1.5f;
-
-        for (int x = 0; x < nScreenWidth; x++) {
-            float fRayAngle = (fPlayerA - fFOV / 2.0f) + (static_cast<float>(x) / nScreenWidth) * fFOV;
-            Vec2 rayDir = { cosf(fRayAngle), sinf(fRayAngle) };
-            Vec2 rayPos = playerPos;
-            float fDistanceToWall = 0.0f;
-            while (fDistanceToWall < fDepth) {
-                rayPos = rayPos + rayDir;
-                int nTestX = static_cast<int>(rayPos.x);
-                int nTestY = static_cast<int>(rayPos.y);
-                if (nTestX < 0 || nTestX >= nMapWidth || nTestY < 0 || nTestY >= nMapHeight) {
-                    fDistanceToWall = fDepth;
-                    break;
-                }
-
-                if (map[nTestY][nTestX] == '#') {
-                    Vec2 wallPos = rayPos - playerPos;
-                    fDistanceToWall = wallPos.x / cosf(fRayAngle);
-                    break;
-                }
-            }
-            int nCeiling = static_cast<int>(nScreenHeight / 2.0 - nScreenHeight / (fDistanceToWall * fWallScalingFactor));
-            int nFloor = nScreenHeight - nCeiling;
-            for (int y = 0; y < nScreenHeight; y++) {
-                wchar_t nShade;
-                if (y < nCeiling)
-                    nShade = L' '; 
-                else if (y >= nCeiling && y <= nFloor)
-                    nShade = L'#'; 
-                else
-                    nShade = L' '; 
-                wcout << nShade;
-            }
-            wcout << endl;
-        }
-    }
-
 };
 
 int main()
